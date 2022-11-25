@@ -1,15 +1,14 @@
-import rest_framework_simplejwt
-
 from django.contrib.auth import authenticate
-from django.contrib.auth.hashers import check_password
 from django.core.mail import send_mail
 from rest_framework import exceptions, serializers
+from rest_framework_simplejwt.serializers import PasswordField
+from rest_framework_simplejwt.tokens import AccessToken
 
 from api.permissions import UserPermission
 from .models import User
 
 
-class CustomPasswordField(serializers.CharField):
+class CustomPasswordField(PasswordField):
     """Переопределение поля password на confirmation_code"""
 
     def __init__(self, *args, **kwargs):
@@ -25,7 +24,7 @@ class CustomTokenObtainSerializer(serializers.Serializer):
     """Переопределение сериализатора для получения токена"""
 
     username_field = User.USERNAME_FIELD
-    token_class = rest_framework_simplejwt.tokens.AccessToken
+    token_class = AccessToken
     default_error_messages = {
         "no_active_account": "Такого пользователя нет"
     }
@@ -34,12 +33,12 @@ class CustomTokenObtainSerializer(serializers.Serializer):
         super().__init__(*args, **kwargs)
 
         self.fields[self.username_field] = serializers.CharField()
-        self.fields['confirmation_code'] = CustomPasswordField()
+        self.fields["confirmation_code"] = CustomPasswordField()
 
     def validate(self, attrs):
         authenticate_kwargs = {
             self.username_field: attrs[self.username_field],
-            "password": attrs['confirmation_code'],
+            "password": attrs["confirmation_code"],
         }
 
         if not self.context.get("request"):
@@ -49,11 +48,10 @@ class CustomTokenObtainSerializer(serializers.Serializer):
 
         if not User.objects.filter(username=attrs[self.username_field]):
             raise exceptions.NotFound
-        user = User.objects.get(username=attrs[self.username_field])
-        if not check_password(attrs["confirmation_code"], user.password):
+        if not User.objects.filter(password=attrs["confirmation_code"]):
             raise exceptions.ParseError
 
-        token = rest_framework_simplejwt.tokens.AccessToken.for_user(self.user)
+        token = AccessToken.for_user(self.user)
         return {'token': str(token)}
 
 
